@@ -75,7 +75,7 @@ func NewPBBlockScanner(wm *WalletManager) *PBBlockScanner {
 	bs.extractingCH = make(chan struct{}, maxExtractingSize)
 	bs.wm = wm
 	bs.IsScanMemPool = bs.wm.Config.IsScanMemPool
-	bs.RescanLastBlockCount = 1
+	bs.RescanLastBlockCount = 2
 
 	//设置扫描任务
 	bs.SetTask(bs.ScanBlockTask)
@@ -700,13 +700,14 @@ func (bs *PBBlockScanner) extractTransaction(trx *Transaction, result *ExtractRe
 					Reason:      reason,
 					SubmitTime:  int64(trx.TimeStamp),
 					ConfirmTime: int64(trx.TimeStamp),
-					IsMemo:      true,
-					Memo:        trx.Memo,
+					//IsMemo:      true,
+					//Memo:        trx.Memo,
 					Received:    isReceived,
 					TxType:      0,
 				}
-
-				tx.SetExtParam("memo", trx.Memo)
+				if trx.Memo != "" {
+					tx.SetExtParam("memo", trx.Memo)
+				}
 				wxID := openwallet.GenTransactionWxID(tx)
 				tx.WxID = wxID
 				extractData.Transaction = tx
