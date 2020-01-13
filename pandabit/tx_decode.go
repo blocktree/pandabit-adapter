@@ -114,7 +114,7 @@ func (decoder *TransactionDecoder) CreatePBRawTransaction(wrapper openwallet.Wal
 	addressesBalanceList := make([]AddrBalance, 0, len(addresses))
 
 	for i, addr := range addresses {
-		balance, err := decoder.wm.RestClient.getBalance(addr.Address, decoder.wm.Config.Denom)
+		balance, err := decoder.wm.RestClient.getBalance(addr.Address, decoder.wm.Config.Denom, "upanda")
 
 		if err != nil {
 			return err
@@ -148,8 +148,9 @@ func (decoder *TransactionDecoder) CreatePBRawTransaction(wrapper openwallet.Wal
 	// keySignList := make([]*openwallet.KeySignature, 1, 1)
 
 	amount := big.NewInt(int64(convertFromAmount(amountStr)))
-	amount = amount.Add(amount, big.NewInt(int64(fee)))
+	//amount = amount.Add(amount, big.NewInt(int64(fee)))
 	from := ""
+	nofeefrom := ""
 	count := big.NewInt(0)
 	countList := []uint64{}
 	for _, a := range addressesBalanceList {
@@ -166,13 +167,23 @@ func (decoder *TransactionDecoder) CreatePBRawTransaction(wrapper openwallet.Wal
 				countList = append(countList, a.Balance.Uint64())
 			}
 			continue
+		} else {
+			if a.FeeBalance.Cmp(big.NewInt(int64(fee))) < 0 {
+				nofeefrom = a.Address
+				continue
+			}
+			from = a.Address
+			break
 		}
-		from = a.Address
-		break
+
+
 	}
 
 	if from == "" {
-		return openwallet.Errorf(openwallet.ErrInsufficientBalanceOfAccount, "the balance: %s is not enough", amountStr)
+		if nofeefrom == "" {
+			return openwallet.Errorf(openwallet.ErrInsufficientBalanceOfAccount, "the balance: %s is not enough", amountStr)
+		}
+		return openwallet.Errorf(openwallet.ErrInsufficientFees, "the address: %s has enough coins, but no enough panda to pay fee", nofeefrom)
 	}
 
 	rawTx.TxFrom = []string{from}
@@ -204,7 +215,7 @@ func (decoder *TransactionDecoder) CreatePBRawTransaction(wrapper openwallet.Wal
 
 	messageType := decoder.wm.Config.MsgType
 
-	txFee := cosmosTransaction.NewStdFee(int64(gas), cosmosTransaction.Coins{cosmosTransaction.NewCoin(denom, int64(fee))})
+	txFee := cosmosTransaction.NewStdFee(int64(gas), cosmosTransaction.Coins{cosmosTransaction.NewCoin("upanda", int64(fee))})
 	message := []cosmosTransaction.Message{cosmosTransaction.NewMessage(messageType, cosmosTransaction.NewMsgSend(from, to, cosmosTransaction.Coins{cosmosTransaction.NewCoin(denom, int64(convertFromAmount(amountStr)))}))}
 	txStruct := cosmosTransaction.NewTxStruct(chainID, memo, accountNumber, int(sequence), &txFee, message)
 

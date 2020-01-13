@@ -607,17 +607,17 @@ func (bs *PBBlockScanner) extractTransaction(trx *Transaction, result *ExtractRe
 					}
 					ed.TxInputs = append(ed.TxInputs, &input)
 
-					if trx.Fee != nil {
-						tmp := *&input
-						feeCharge := &tmp
-						feeCharge.Amount = convertToAmount(trx.Fee[i].Amount)
-						fee = feeCharge.Amount
-						fee = feeCharge.Amount
-						feeCharge.Index = uint64(inputindex)
-						inputindex++
-						feeCharge.Sid = openwallet.GenTxInputSID(trx.TxID, bs.wm.Symbol(), "", feeCharge.Index)
-						ed.TxInputs = append(ed.TxInputs, feeCharge)
-					}
+					//if trx.Fee != nil {
+					//	tmp := *&input
+					//	feeCharge := &tmp
+					//	feeCharge.Amount = convertToAmount(trx.Fee[i].Amount)
+					//	fee = feeCharge.Amount
+					//	fee = feeCharge.Amount
+					//	feeCharge.Index = uint64(inputindex)
+					//	inputindex++
+					//	feeCharge.Sid = openwallet.GenTxInputSID(trx.TxID, bs.wm.Symbol(), "", feeCharge.Index)
+					//	ed.TxInputs = append(ed.TxInputs, feeCharge)
+					//}
 				}
 
 				to = tx.To
@@ -652,7 +652,7 @@ func (bs *PBBlockScanner) extractTransaction(trx *Transaction, result *ExtractRe
 						toArray = append(toArray, to+":"+output.Amount)
 					}
 
-					amountCount += tx.Amount
+					//amountCount += tx.Amount
 					output.Coin = openwallet.Coin{
 						Symbol:     bs.wm.Symbol(),
 						IsContract: false,
@@ -680,9 +680,6 @@ func (bs *PBBlockScanner) extractTransaction(trx *Transaction, result *ExtractRe
 			}
 
 			for _, extractData := range result.extractData {
-				// status := "1"
-				// reason := ""
-
 				tx := &openwallet.Transaction{
 					From:   fromArray,
 					To:     toArray,
@@ -700,8 +697,6 @@ func (bs *PBBlockScanner) extractTransaction(trx *Transaction, result *ExtractRe
 					Reason:      reason,
 					SubmitTime:  int64(trx.TimeStamp),
 					ConfirmTime: int64(trx.TimeStamp),
-					//IsMemo:      true,
-					//Memo:        trx.Memo,
 					Received:    isReceived,
 					TxType:      0,
 				}
@@ -959,7 +954,7 @@ func (bs *PBBlockScanner) GetBalanceByAddress(address ...string) ([]*openwallet.
 	addrsBalance := make([]*openwallet.Balance, 0)
 
 	for _, addr := range address {
-		balance, err := bs.wm.RestClient.getBalance(addr, bs.wm.Config.Denom)
+		balance, err := bs.wm.RestClient.getBalance(addr, bs.wm.Config.Denom, "upanda")
 		if err != nil {
 			return nil, err
 		}

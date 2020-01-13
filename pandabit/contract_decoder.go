@@ -13,6 +13,7 @@ import (
 type AddrBalance struct {
 	Address string
 	Balance *big.Int
+	FeeBalance *big.Int
 	index   int
 }
 

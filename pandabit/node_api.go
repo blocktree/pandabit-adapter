@@ -207,7 +207,7 @@ func (c *Client) getAccountNumberAndSequence(address string) (int, int, error) {
 }
 
 // 获取地址余额
-func (c *Client) getBalance(address string, denom string) (*AddrBalance, error) {
+func (c *Client) getBalance(address string, denom, feeDenom string) (*AddrBalance, error) {
 	path := "/bank/balances/" + address
 
 	r, err := c.Call(path, nil, "GET")
@@ -222,13 +222,20 @@ func (c *Client) getBalance(address string, denom string) (*AddrBalance, error) 
 
 	coins := r.Array()
 
+	balance := big.NewInt(0)
+	feeBalance := big.NewInt(0)
+
 	for _, coin := range coins {
 		if coin.Get("denom").String() == denom {
-			return &AddrBalance{Address: address, Balance: big.NewInt(coin.Get("amount").Int())}, nil
+			balance = big.NewInt(coin.Get("amount").Int())
+		}
+
+		if coin.Get("denom").String() == feeDenom {
+			feeBalance = big.NewInt(coin.Get("amount").Int())
 		}
 	}
 
-	return &AddrBalance{Address: address, Balance: big.NewInt(0)}, nil
+	return &AddrBalance{Address: address, Balance: balance, FeeBalance:feeBalance}, nil
 }
 
 // 获取区块信息
