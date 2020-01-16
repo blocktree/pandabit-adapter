@@ -617,23 +617,11 @@ func (wm *WalletManager) GetAddressWithBalance(address ...*openwallet.Address) e
 
 //LoadAssetsConfig 加载外部配置
 func (wm *WalletManager) LoadAssetsConfig(c config.Configer) error {
-	wm.Config.IsTestNet, _ = c.Bool("isTestNet")
-
-	if wm.Config.IsTestNet {
-		wm.Config.RestAPI = c.String("testnetRestAPI")
-		wm.Config.ChainID = c.String("testnetChainID")
-		wm.Config.Denom = c.String("testnetDenom")
-		wm.Config.NodeAPI = c.String("testnetNodeAPI")
-
-	} else {
-		wm.Config.RestAPI = c.String("mainnetRestAPI")
-		wm.Config.ChainID = c.String("mainnetChainID")
-		wm.Config.Denom = c.String("mainnetDenom")
-		wm.Config.NodeAPI = c.String("mainnetNodeAPI")
-	}
+	wm.Config.RestAPI = c.String("restAPI")
+	wm.Config.ChainID = c.String("chainID")
 
 	wm.RestClient = NewClient(wm.Config.RestAPI, false)
-	wm.NodeClient = NewClient(wm.Config.NodeAPI, false)
+	//wm.NodeClient = NewClient(wm.Config.NodeAPI, false)
 
 	wm.Config.TxType = c.String("txType")
 	msgType, _ := c.Int("msgType")
@@ -646,7 +634,7 @@ func (wm *WalletManager) LoadAssetsConfig(c config.Configer) error {
 		wm.Config.MsgType = c.String("msgDelegate")
 	}
 
-	wm.Config.PayFee, _ = c.Bool("payFee")
+	//wm.Config.PayFee, _ = c.Bool("payFee")
 	minFee, _ := c.Int("minFee")
 	wm.Config.MinFee = uint64(minFee)
 	stdGas, _ := c.Int("stdGas")

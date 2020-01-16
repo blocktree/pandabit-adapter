@@ -40,9 +40,9 @@ func (decoder *addressDecoder) PrivateKeyToWIF(priv []byte, isTestnet bool) (str
 func (decoder *addressDecoder) PublicKeyToAddress(pub []byte, isTestnet bool) (string, error) {
 
 	cfg := addressEncoder.ATOM_mainnetAddress
-	if decoder.wm.Config.IsTestNet {
-		cfg = addressEncoder.ATOM_testnetAddress
-	}
+	//if decoder.wm.Config.IsTestNet {
+	//	cfg = addressEncoder.ATOM_testnetAddress
+	//}
 
 	pkHash := owcrypt.Hash(pub, 32, owcrypt.HASH_ALG_HASH160)
 

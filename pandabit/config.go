@@ -58,7 +58,7 @@ type WalletConfig struct {
 	//区块链数据文件
 	//BlockchainFile string
 	//是否测试网络
-	IsTestNet bool
+	//IsTestNet bool
 	// 核心钱包是否只做监听
 	CoreWalletWatchOnly bool
 	//最大的输入数量
@@ -69,8 +69,8 @@ type WalletConfig struct {
 	backupDir string
 	//钱包服务API
 	ServerAPI string
-	// node API
-	NodeAPI string
+	//// node API
+	//NodeAPI string
 	// rest API
 	RestAPI string
 	//钱包安装的路径
@@ -94,17 +94,18 @@ type WalletConfig struct {
 	// chain id
 	ChainID string
 	// denom of token
-	Denom string
+	//Denom string
 	// transaction type
 	TxType string
 	// message type
 	MsgType string
 	// pay fee or not
-	PayFee bool
+	//PayFee bool
 	// minimumu fee
 	MinFee uint64
 	// gas standed
 	StdGas uint64
+	FeeDenom string
 	// scan mem pool or not
 	IsScanMemPool bool
 	// data directory
@@ -141,7 +142,7 @@ func NewConfig(symbol string, masterKey string) *WalletConfig {
 	//区块链数据文件
 	//c.BlockchainFile = "blockchain.db"
 	//是否测试网络
-	c.IsTestNet = false
+	//c.IsTestNet = false
 	// 核心钱包是否只做监听
 	c.CoreWalletWatchOnly = true
 	//最大的输入数量

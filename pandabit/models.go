@@ -47,7 +47,7 @@ type TxValue struct {
 	Amount uint64
 	Status string
 	Reason string
-	// Denom  string
+	Denom  string
 }
 
 type FeeValue struct {
@@ -66,7 +66,7 @@ type Transaction struct {
 	Memo        string
 }
 
-func NewTransaction(json *gjson.Result, txType, msgType, denom string) *Transaction {
+func NewTransaction(json *gjson.Result, txType, msgType string) *Transaction {
 
 	obj := &Transaction{}
 	obj.TxType = json.Get("tx").Get("type").String()
@@ -92,50 +92,49 @@ func NewTransaction(json *gjson.Result, txType, msgType, denom string) *Transact
 	for _, msg := range msgList {
 		if msg.Get("type").String() == msgType {
 			for _, coin := range msg.Get("value").Get("amount").Array() {
-				if coin.Get("denom").String() == denom {
-					obj.TxValue = append(obj.TxValue, TxValue{
-						From:   msg.Get("value").Get("from_address").String(),
-						To:     msg.Get("value").Get("to_address").String(),
-						Amount: coin.Get("amount").Uint(),
-						Status: status,
-						Reason: reason,
-					})
 
-					if feeList != nil && len(feeList) > 0 {
-						obj.Fee = append(obj.Fee, FeeValue{feeList[0].Get("amount").Uint()})
-					} else {
-						obj.Fee = nil
-					}
+				obj.TxValue = append(obj.TxValue, TxValue{
+					From:   msg.Get("value").Get("from_address").String(),
+					To:     msg.Get("value").Get("to_address").String(),
+					Amount: coin.Get("amount").Uint(),
+					Denom:coin.Get("denom").String(),
+					Status: status,
+					Reason: reason,
+				})
+
+				if feeList != nil && len(feeList) > 0 {
+					obj.Fee = append(obj.Fee, FeeValue{feeList[0].Get("amount").Uint()})
+				} else {
+					obj.Fee = nil
 				}
+
 			}
 
 		}
 		if msg.Get("type").String() == "cosmos-sdk/MsgMultiSend" {
 			for _, input := range msg.Get("value").Get("inputs").Array() {
 				for _, coin := range input.Get("coins").Array() {
-					if coin.Get("denom").String() == denom {
-						obj.TxValue = append(obj.TxValue, TxValue{
-							From: input.Get("address").String(),
-							To:   "multiaddress",
-							Amount: coin.Get("amount").Uint(),
-							Status: status,
-							Reason:reason,
-						})
-					}
+					obj.TxValue = append(obj.TxValue, TxValue{
+						From: input.Get("address").String(),
+						To:   "multiaddress",
+						Amount: coin.Get("amount").Uint(),
+						Denom: coin.Get("denom").String(),
+						Status: status,
+						Reason:reason,
+					})
 				}
 			}
 
 			for _, output := range msg.Get("value").Get("outputs").Array() {
 				for _, coin := range output.Get("coins").Array() {
-					if coin.Get("denom").String() == denom {
 						obj.TxValue = append(obj.TxValue, TxValue{
 							From: "multiaddress",
 							To: output.Get("address").String(),
 							Amount: coin.Get("amount").Uint(),
+							Denom:coin.Get("denom").String(),
 							Status: status,
 							Reason:reason,
 						})
-					}
 				}
 			}
 			if feeList != nil && len(feeList) > 0 {

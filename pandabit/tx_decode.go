@@ -46,17 +46,29 @@ func NewTransactionDecoder(wm *WalletManager) *TransactionDecoder {
 
 //CreateRawTransaction 创建交易单
 func (decoder *TransactionDecoder) CreateRawTransaction(wrapper openwallet.WalletDAI, rawTx *openwallet.RawTransaction) error {
-	return decoder.CreatePBRawTransaction(wrapper, rawTx)
+	if rawTx.Coin.IsContract {
+		return decoder.CreatePBRawTransaction(wrapper, rawTx)
+	}
+
+	return openwallet.Errorf(openwallet.ErrUnknownException, "not contract")
 }
 
 //SignRawTransaction 签名交易单
 func (decoder *TransactionDecoder) SignRawTransaction(wrapper openwallet.WalletDAI, rawTx *openwallet.RawTransaction) error {
-	return decoder.SignPBRawTransaction(wrapper, rawTx)
+	if rawTx.Coin.IsContract {
+		return decoder.SignPBRawTransaction(wrapper, rawTx)
+	}
+
+	return openwallet.Errorf(openwallet.ErrUnknownException, "not contract")
 }
 
 //VerifyRawTransaction 验证交易单，验证交易单并返回加入签名后的交易单
 func (decoder *TransactionDecoder) VerifyRawTransaction(wrapper openwallet.WalletDAI, rawTx *openwallet.RawTransaction) error {
-	return decoder.VerifyPBRawTransaction(wrapper, rawTx)
+	if rawTx.Coin.IsContract {
+		return decoder.VerifyPBRawTransaction(wrapper, rawTx)
+	}
+
+	return openwallet.Errorf(openwallet.ErrUnknownException, "not contract")
 }
 
 func (decoder *TransactionDecoder) SubmitRawTransaction(wrapper openwallet.WalletDAI, rawTx *openwallet.RawTransaction) (*openwallet.Transaction, error) {
@@ -114,7 +126,7 @@ func (decoder *TransactionDecoder) CreatePBRawTransaction(wrapper openwallet.Wal
 	addressesBalanceList := make([]AddrBalance, 0, len(addresses))
 
 	for i, addr := range addresses {
-		balance, err := decoder.wm.RestClient.getBalance(addr.Address, decoder.wm.Config.Denom, "upanda")
+		balance, err := decoder.wm.RestClient.getBalance(addr.Address, rawTx.Coin.Contract.Address, rawTx.Coin.Contract.Address)
 
 		if err != nil {
 			return err
@@ -133,9 +145,7 @@ func (decoder *TransactionDecoder) CreatePBRawTransaction(wrapper openwallet.Wal
 	if len(rawTx.FeeRate) > 0 {
 		fee = convertFromAmount(rawTx.FeeRate)
 	} else {
-		if decoder.wm.Config.PayFee {
-			fee = decoder.wm.Config.MinFee
-		}
+		fee = decoder.wm.Config.MinFee
 	}
 	// fee := big.NewInt(int64(decoder.wm.Config.FeeCharge))
 
@@ -148,7 +158,10 @@ func (decoder *TransactionDecoder) CreatePBRawTransaction(wrapper openwallet.Wal
 	// keySignList := make([]*openwallet.KeySignature, 1, 1)
 
 	amount := big.NewInt(int64(convertFromAmount(amountStr)))
-	//amount = amount.Add(amount, big.NewInt(int64(fee)))
+	if rawTx.Coin.Contract.Address == decoder.wm.Config.FeeDenom {
+		amount = amount.Add(amount, big.NewInt(int64(fee)))
+	}
+
 	from := ""
 	nofeefrom := ""
 	count := big.NewInt(0)
@@ -167,23 +180,26 @@ func (decoder *TransactionDecoder) CreatePBRawTransaction(wrapper openwallet.Wal
 				countList = append(countList, a.Balance.Uint64())
 			}
 			continue
-		} else {
-			if a.FeeBalance.Cmp(big.NewInt(int64(fee))) < 0 {
-				nofeefrom = a.Address
-				continue
-			}
+		}
+
+		if rawTx.Coin.Contract.Address == decoder.wm.Config.FeeDenom {
 			from = a.Address
 			break
 		}
 
-
+		if a.FeeBalance.Cmp(big.NewInt(int64(fee))) >= 0 {
+			from = a.Address
+			break
+		} else {
+			nofeefrom = a.Address
+		}
 	}
 
-	if from == "" {
+	if from == ""{
 		if nofeefrom == "" {
 			return openwallet.Errorf(openwallet.ErrInsufficientBalanceOfAccount, "the balance: %s is not enough", amountStr)
 		}
-		return openwallet.Errorf(openwallet.ErrInsufficientFees, "the address: %s has enough coins, but no enough panda to pay fee", nofeefrom)
+		return openwallet.Errorf(openwallet.ErrInsufficientFees, "address "+ nofeefrom + " has enough amount to send, but which has not enough panda to pay fee")
 	}
 
 	rawTx.TxFrom = []string{from}
@@ -192,7 +208,7 @@ func (decoder *TransactionDecoder) CreatePBRawTransaction(wrapper openwallet.Wal
 	rawTx.Fees = convertToAmount(fee)
 	rawTx.FeeRate = convertToAmount(fee)
 
-	denom := decoder.wm.Config.Denom
+	denom := rawTx.Coin.Contract.Address
 	chainID := decoder.wm.Config.ChainID
 	var sequence uint64
 	sequence_db, err := wrapper.GetAddressExtParam(from, decoder.wm.FullName())
@@ -215,7 +231,7 @@ func (decoder *TransactionDecoder) CreatePBRawTransaction(wrapper openwallet.Wal
 
 	messageType := decoder.wm.Config.MsgType
 
-	txFee := cosmosTransaction.NewStdFee(int64(gas), cosmosTransaction.Coins{cosmosTransaction.NewCoin("upanda", int64(fee))})
+	txFee := cosmosTransaction.NewStdFee(int64(gas), cosmosTransaction.Coins{cosmosTransaction.NewCoin(decoder.wm.Config.FeeDenom, int64(fee))})
 	message := []cosmosTransaction.Message{cosmosTransaction.NewMessage(messageType, cosmosTransaction.NewMsgSend(from, to, cosmosTransaction.Coins{cosmosTransaction.NewCoin(denom, int64(convertFromAmount(amountStr)))}))}
 	txStruct := cosmosTransaction.NewTxStruct(chainID, memo, accountNumber, int(sequence), &txFee, message)
 
@@ -343,19 +359,15 @@ func (decoder *TransactionDecoder) VerifyPBRawTransaction(wrapper openwallet.Wal
 }
 
 func (decoder *TransactionDecoder) GetRawTransactionFeeRate() (feeRate string, unit string, err error) {
-	if decoder.wm.Config.PayFee {
-		return convertToAmount(decoder.wm.Config.MinFee), "TX", nil
-	} else {
-		return convertToAmount(0), "TX", nil
-	}
+	return convertToAmount(decoder.wm.Config.MinFee), "TX", nil
 }
 
 //CreateSummaryRawTransaction 创建汇总交易，返回原始交易单数组
 func (decoder *TransactionDecoder) CreateSummaryRawTransaction(wrapper openwallet.WalletDAI, sumRawTx *openwallet.SummaryRawTransaction) ([]*openwallet.RawTransaction, error) {
 	if sumRawTx.Coin.IsContract {
-		return nil, nil
-	} else {
 		return decoder.CreateSimpleSummaryRawTransaction(wrapper, sumRawTx)
+	} else {
+		return nil, nil
 	}
 }
 
@@ -388,15 +400,27 @@ func (decoder *TransactionDecoder) CreateSimpleSummaryRawTransaction(wrapper ope
 		searchAddrs = append(searchAddrs, address.Address)
 	}
 
-	addrBalanceArray, err := decoder.wm.Blockscanner.GetBalanceByAddress(searchAddrs...)
-	if err != nil {
-		return nil, err
+	addressesBalanceList := make([]AddrBalance, 0, len(addresses))
+
+	for i, addr := range addresses {
+		balance, err := decoder.wm.RestClient.getBalance(addr.Address, sumRawTx.Coin.Contract.Address, decoder.wm.Config.FeeDenom)
+
+		if err != nil {
+			return nil, err
+		}
+
+		balance.index = i
+		addressesBalanceList = append(addressesBalanceList, *balance)
 	}
 
-	for _, addrBalance := range addrBalanceArray {
+	sort.Slice(addressesBalanceList, func(i int, j int) bool {
+		return addressesBalanceList[i].Balance.Cmp(addressesBalanceList[j].Balance) >= 0
+	})
+
+	for _, addrBalance := range addressesBalanceList {
 
 		//检查余额是否超过最低转账
-		addrBalance_BI := big.NewInt(int64(convertFromAmount(addrBalance.Balance)))
+		addrBalance_BI := addrBalance.Balance
 
 		if addrBalance_BI.Cmp(minTransfer) < 0 {
 			continue
@@ -411,17 +435,45 @@ func (decoder *TransactionDecoder) CreateSimpleSummaryRawTransaction(wrapper ope
 		if len(sumRawTx.FeeRate) > 0 {
 			fee = big.NewInt(int64(convertFromAmount(sumRawTx.FeeRate)))
 		} else {
-			if decoder.wm.Config.PayFee {
-				fee = big.NewInt((int64(decoder.wm.Config.MinFee)))
+			fee = big.NewInt((int64(decoder.wm.Config.MinFee)))
+		}
+
+		if addrBalance.FeeBalance.Cmp(fee) < 0 {
+			if sumRawTx.FeesSupportAccount == nil {
+				return nil, openwallet.Errorf(openwallet.ErrAccountNotFound, "miss fee support account ")
+			} else {
+				account, supportErr := wrapper.GetAssetsAccountInfo(sumRawTx.FeesSupportAccount.AccountID)
+				if supportErr != nil {
+					return nil, openwallet.Errorf(openwallet.ErrAccountNotFound, "can not find fees support account")
+				}
+
+				feeSupportAddresses, err := wrapper.GetAddressList(0, 2000, "AccountID", account.AccountID)
+
+				if err != nil {
+					return nil, fmt.Errorf("Failed to get fee support account!")
+				}
+
+				if len(feeSupportAddresses) == 0 {
+					return nil, fmt.Errorf("No addresses found in fee support account!")
+				}
+
+				feesupportamount := convertToAmount(fee.Uint64())
+				rawTx := &openwallet.RawTransaction{
+					Account:account,
+					To: map[string]string{
+						addrBalance.Address:feesupportamount,
+					},
+				}
+
+				createErr := decoder.createFeeSupportTransaction(wrapper, rawTx)
+				if createErr != nil {
+					return nil, createErr
+				}
+
+				//创建成功，添加到队列
+				rawTxArray = append(rawTxArray, rawTx)
 			}
 		}
-
-		//减去手续费
-		sumAmount_BI.Sub(sumAmount_BI, fee)
-		if sumAmount_BI.Cmp(big.NewInt(0)) <= 0 {
-			continue
-		}
-
 		sumAmount := convertToAmount(sumAmount_BI.Uint64())
 		fees := convertToAmount(fee.Uint64())
 
@@ -454,14 +506,9 @@ func (decoder *TransactionDecoder) CreateSimpleSummaryRawTransaction(wrapper ope
 	return rawTxArray, nil
 }
 
-func (decoder *TransactionDecoder) createRawTransaction(wrapper openwallet.WalletDAI, rawTx *openwallet.RawTransaction, addrBalance *openwallet.Balance) error {
-
+func (decoder *TransactionDecoder) createFeeSupportTransaction(wrapper openwallet.WalletDAI, rawTx *openwallet.RawTransaction) error {
 	gas := decoder.wm.Config.StdGas
-	fee := uint64(0) //decoder.wm.Config.FeeCharge
-	if decoder.wm.Config.PayFee {
-		fee = decoder.wm.Config.MinFee
-	}
-
+	fee := decoder.wm.Config.MinFee
 	var amountStr, to string
 	for k, v := range rawTx.To {
 		to = k
@@ -471,12 +518,44 @@ func (decoder *TransactionDecoder) createRawTransaction(wrapper openwallet.Walle
 
 	amount := big.NewInt(int64(convertFromAmount(amountStr)))
 	amount = amount.Add(amount, big.NewInt(int64(fee)))
-	from := addrBalance.Address
-	fromAddr, err := wrapper.GetAddress(from)
+
+	addresses, err := wrapper.GetAddressList(0, -1, "AccountID", rawTx.Account.AccountID)
+
 	if err != nil {
 		return err
 	}
-	//fromPubkey := fromAddr.PublicKey
+
+	if len(addresses) == 0 {
+		return openwallet.Errorf(openwallet.ErrAccountNotAddress, "[%s] have not addresses", rawTx.Account.AccountID)
+	}
+
+	addressesBalanceList := make([]AddrBalance, 0, len(addresses))
+
+	for i, addr := range addresses {
+		balance, err := decoder.wm.RestClient.getBalance(addr.Address, rawTx.Coin.Contract.Address, decoder.wm.Config.FeeDenom)
+
+		if err != nil {
+			return err
+		}
+
+		balance.index = i
+		addressesBalanceList = append(addressesBalanceList, *balance)
+	}
+
+	sort.Slice(addressesBalanceList, func(i int, j int) bool {
+		return addressesBalanceList[i].Balance.Cmp(addressesBalanceList[j].Balance) >= 0
+	})
+
+	from := ""
+	for _, balance := range addressesBalanceList {
+		if balance.Balance.Cmp(amount) < 0 {
+			continue
+		}
+		from = balance.Address
+	}
+	if from == "" {
+		return  openwallet.Errorf(openwallet.ErrInsufficientFees, "fee support account has not enough panda")
+	}
 
 	rawTx.TxFrom = []string{from}
 	rawTx.TxTo = []string{to}
@@ -484,7 +563,8 @@ func (decoder *TransactionDecoder) createRawTransaction(wrapper openwallet.Walle
 	rawTx.Fees = convertToAmount(fee)
 	rawTx.FeeRate = convertToAmount(fee)
 
-	denom := decoder.wm.Config.Denom
+
+	denom := decoder.wm.Config.FeeDenom
 	chainID := decoder.wm.Config.ChainID
 	var sequence uint64
 	sequence_db, err := wrapper.GetAddressExtParam(from, decoder.wm.FullName())
@@ -507,7 +587,91 @@ func (decoder *TransactionDecoder) createRawTransaction(wrapper openwallet.Walle
 
 	messageType := decoder.wm.Config.MsgType
 
-	txFee := cosmosTransaction.NewStdFee(int64(gas), cosmosTransaction.Coins{cosmosTransaction.NewCoin(denom, int64(fee))})
+	txFee := cosmosTransaction.NewStdFee(int64(gas), cosmosTransaction.Coins{cosmosTransaction.NewCoin(decoder.wm.Config.FeeDenom, int64(fee))})
+	message := []cosmosTransaction.Message{cosmosTransaction.NewMessage(messageType, cosmosTransaction.NewMsgSend(from, to, cosmosTransaction.Coins{cosmosTransaction.NewCoin(denom, int64(convertFromAmount(amountStr)))}))}
+	txStruct := cosmosTransaction.NewTxStruct(chainID, memo, accountNumber, int(sequence), &txFee, message)
+	emptyTrans, hash, err := txStruct.CreateEmptyTransactionAndHash()
+	if err != nil {
+		return err
+	}
+	rawTx.RawHex = emptyTrans
+
+	if rawTx.Signatures == nil {
+		rawTx.Signatures = make(map[string][]*openwallet.KeySignature)
+	}
+
+	keySigs := make([]*openwallet.KeySignature, 0)
+	fromAddr, err := wrapper.GetAddress(from)
+	if err != nil {
+		return err
+	}
+	signature := openwallet.KeySignature{
+		EccType: decoder.wm.Config.CurveType,
+		Nonce:   "",
+		Address: fromAddr,
+		Message: hash,
+	}
+
+	keySigs = append(keySigs, &signature)
+
+	rawTx.Signatures[rawTx.Account.AccountID] = keySigs
+
+	rawTx.FeeRate = big.NewInt(int64(fee)).String()
+
+	rawTx.IsBuilt = true
+	return nil
+}
+
+func (decoder *TransactionDecoder) createRawTransaction(wrapper openwallet.WalletDAI, rawTx *openwallet.RawTransaction, addrBalance AddrBalance) error {
+
+	gas := decoder.wm.Config.StdGas
+	fee := decoder.wm.Config.MinFee //decoder.wm.Config.FeeCharge
+
+	var amountStr, to string
+	for k, v := range rawTx.To {
+		to = k
+		amountStr = v
+		break
+	}
+
+	//amount := big.NewInt(int64(convertFromAmount(amountStr)))
+	//amount = amount.Add(amount, big.NewInt(int64(fee)))
+	from := addrBalance.Address
+	fromAddr, err := wrapper.GetAddress(from)
+	if err != nil {
+		return err
+	}
+
+	rawTx.TxFrom = []string{from}
+	rawTx.TxTo = []string{to}
+	rawTx.TxAmount = amountStr
+	rawTx.Fees = convertToAmount(fee)
+	rawTx.FeeRate = convertToAmount(fee)
+
+	denom := rawTx.Coin.Contract.Address
+	chainID := decoder.wm.Config.ChainID
+	var sequence uint64
+	sequence_db, err := wrapper.GetAddressExtParam(from, decoder.wm.FullName())
+	if err != nil {
+		return err
+	}
+	if sequence_db == nil {
+		sequence = 0
+	} else {
+		sequence = ow.NewString(sequence_db).UInt64()
+	}
+	accountNumber, sequenceChain, err := decoder.wm.RestClient.getAccountNumberAndSequence(from)
+	if err != nil {
+		return err
+	}
+	if sequenceChain > int(sequence) {
+		sequence = uint64(sequenceChain)
+	}
+	memo := rawTx.GetExtParam().Get("memo").String()
+
+	messageType := decoder.wm.Config.MsgType
+
+	txFee := cosmosTransaction.NewStdFee(int64(gas), cosmosTransaction.Coins{cosmosTransaction.NewCoin(decoder.wm.Config.FeeDenom, int64(fee))})
 	message := []cosmosTransaction.Message{cosmosTransaction.NewMessage(messageType, cosmosTransaction.NewMsgSend(from, to, cosmosTransaction.Coins{cosmosTransaction.NewCoin(denom, int64(convertFromAmount(amountStr)))}))}
 	txStruct := cosmosTransaction.NewTxStruct(chainID, memo, accountNumber, int(sequence), &txFee, message)
 	emptyTrans, hash, err := txStruct.CreateEmptyTransactionAndHash()
