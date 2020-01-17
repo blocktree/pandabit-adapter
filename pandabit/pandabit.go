@@ -640,6 +640,7 @@ func (wm *WalletManager) LoadAssetsConfig(c config.Configer) error {
 	stdGas, _ := c.Int("stdGas")
 	wm.Config.StdGas = uint64(stdGas)
 	wm.Config.IsScanMemPool, _ = c.Bool("isScanMemPool")
+	wm.Config.FeeDenom = c.String("feeDenom")
 	wm.Config.DataDir = c.String("dataDir")
 
 	//数据文件夹
