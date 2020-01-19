@@ -472,6 +472,7 @@ func (decoder *TransactionDecoder) CreateSimpleSummaryRawTransaction(wrapper ope
 
 				//创建成功，添加到队列
 				rawTxArray = append(rawTxArray, rawTx)
+				continue
 			}
 		}
 		sumAmount := convertToAmount(sumAmount_BI.Uint64())
@@ -548,7 +549,7 @@ func (decoder *TransactionDecoder) createFeeSupportTransaction(wrapper openwalle
 
 	from := ""
 	for _, balance := range addressesBalanceList {
-		if balance.Balance.Cmp(amount) < 0 {
+		if balance.FeeBalance.Cmp(amount) < 0 {
 			continue
 		}
 		from = balance.Address
@@ -618,6 +619,7 @@ func (decoder *TransactionDecoder) createFeeSupportTransaction(wrapper openwalle
 
 	rawTx.FeeRate = big.NewInt(int64(fee)).String()
 
+	rawTx.Coin = openwallet.Coin{IsContract:true,Contract:openwallet.SmartContract{Address:decoder.wm.Config.FeeDenom}}
 	rawTx.IsBuilt = true
 	return nil
 }
