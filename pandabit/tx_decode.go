@@ -126,7 +126,7 @@ func (decoder *TransactionDecoder) CreatePBRawTransaction(wrapper openwallet.Wal
 	addressesBalanceList := make([]AddrBalance, 0, len(addresses))
 
 	for i, addr := range addresses {
-		balance, err := decoder.wm.RestClient.getBalance(addr.Address, rawTx.Coin.Contract.Address, rawTx.Coin.Contract.Address)
+		balance, err := decoder.wm.RestClient.getBalance(addr.Address, rawTx.Coin.Contract.Address, decoder.wm.Config.FeeDenom)
 
 		if err != nil {
 			return err
@@ -428,7 +428,13 @@ func (decoder *TransactionDecoder) CreateSimpleSummaryRawTransaction(wrapper ope
 		//计算汇总数量 = 余额 - 保留余额
 		sumAmount_BI := new(big.Int)
 		sumAmount_BI.Sub(addrBalance_BI, retainedBalance)
+		if addrBalance_BI.Cmp(minTransfer) < 0 {
+			continue
+		}
 
+		if sumAmount_BI.Cmp(big.NewInt(0))<=0 {
+			continue
+		}
 		//this.wm.Log.Debug("sumAmount:", sumAmount)
 		//计算手续费
 		fee := big.NewInt(0) //(int64(decoder.wm.Config.FeeCharge))
@@ -440,7 +446,7 @@ func (decoder *TransactionDecoder) CreateSimpleSummaryRawTransaction(wrapper ope
 
 		if addrBalance.FeeBalance.Cmp(fee) < 0 {
 			if sumRawTx.FeesSupportAccount == nil {
-				return nil, openwallet.Errorf(openwallet.ErrAccountNotFound, "miss fee support account ")
+				return nil, openwallet.Errorf(openwallet.ErrAccountNotFound, "address [%s] has not enough panda to pay fee while fee support account is missing", addrBalance.Address)
 			} else {
 				account, supportErr := wrapper.GetAssetsAccountInfo(sumRawTx.FeesSupportAccount.AccountID)
 				if supportErr != nil {
